@@ -25,7 +25,7 @@ namespace Decompressor
             try
             {
                 OpenFileDialog op = new OpenFileDialog();
-                op.Filter = "All Nier Volume Files (*.2DV;*.MDV;*.VIR;*.EFV)|*.2DV;*.MDV;*.VIR;*.EFV";
+                op.Filter = "All Nier Volume Files (*.2DV;*.MDV;*.VIR;*.EFV)|*.2DV;*.MDV;*.VIR;*.EFV|Nier Font File (FONT_MAIN.PS3.BIN;FONT_MAIN_JP.PS3.BIN)|FONT_MAIN.PS3.BIN;FONT_MAIN_JP.PS3.BIN";
                 if (op.ShowDialog() == DialogResult.OK)
                 {
                     string definizioni = op.FileName;
@@ -45,6 +45,13 @@ namespace Decompressor
                     else if (op.FileName.Split('.').Last() == "EFV")
                     {
                         datiimmagini += ".EFP";
+                    }
+                    else if (op.FileName.Split('.').Last() == "BIN")
+                    {
+                        int index =definizioni.LastIndexOf("MAIN");
+                        datiimmagini = definizioni.Substring(0, index);
+                        datiimmagini += "VRAM";
+                        datiimmagini += definizioni.Substring(index+4,definizioni.Length-index-4);
                     }
                     else
                     {
@@ -211,7 +218,9 @@ namespace Decompressor
                                 }
                             }
                             fold.Description = "Choose a directory where the files will be decompressed";
-                            int compressiontype;
+                            int compressiontype, width, height, pitch;
+                            bool deswizzle;
+                            byte[] filedata;
                             if (fold.ShowDialog() == DialogResult.OK)
                             {
                                 string directory = fold.SelectedPath;
@@ -273,19 +282,30 @@ namespace Decompressor
                                     {
                                         
                                         var myfile= File.Create(directory + "\\" + name + ".dds");
-                                        Array.Copy(def, list[i].propertyaddress + 8, punt, 0, 2); //Height
+                                        Array.Copy(def, list[i].propertyaddress + 0x8, punt, 0, 2); //Width
                                         header[16] = punt[1];
                                         header[17] = punt[0];
-                                        Array.Copy(def, list[i].propertyaddress + 10, punt, 0, 2); //Width
+                                        width = punt[0] * 0x100 + punt[1];
+                                        Array.Copy(def, list[i].propertyaddress + 0xA, punt, 0, 2); //Height
                                         header[12] = punt[1];
                                         header[13] = punt[0];
+                                        height = punt[0] * 0x100 + punt[1];
                                         compressiontype = def[list[i].propertyaddress];
+                                        if (compressiontype == 0x85)
+                                        {
+                                            deswizzle = true;
+                                        }
+                                        else deswizzle = false;
                                         compressiontype = compressiontype & 0x0f;
                                         if (compressiontype == 0x5)
-                                        { //uncompressed (must specify pitch)
-                                            Array.Copy(def, list[i].propertyaddress + 18, punt, 0, 2);
-                                            header[20] = punt[1];
-                                            header[21] = punt[0];
+                                        { //uncompressed (must calculate pitch)
+                                            //Array.Copy(def, list[i].propertyaddress + 18, punt, 0, 2); it's already specified in some files, but better be sure                   
+                                            pitch = (width * 32 + 7) / 8;
+                                            punt = BitConverter.GetBytes(pitch);
+                                            header[20] = punt[0];
+                                            header[21] = punt[1];
+                                            header[22] = punt[2];
+                                            header[23] = punt[3];
                                             header[8] = 0x0F;
                                             header[80] = 0x41;
                                             header[88] = 0x20;
@@ -301,7 +321,10 @@ namespace Decompressor
                                             header[87] = 0x0;
                                             header[108] = 0x0;
                                             header[110] = 0x0;
-                                            compression = "Uncompressed";
+                                            if (!deswizzle)
+                                                compression = "Uncompressed";
+                                            else
+                                                compression = "Un. Swizzled";
                                         }
                                         else
                                         { //compressed (put dxt*)
@@ -353,7 +376,26 @@ namespace Decompressor
                                         textdesc = string.Format("{0,-50}  {1,-13} {2,-12}  {3,-8}  {4,-12}  {5,-12}  {6,-12}  {7,-12}", name, compression, mipmapnum, heapnum, filepointer, propertypointer, startdatapointer, enddatapointer);
                                         NierTextureDesc.Add(textdesc);
                                         myfile.Write(header, 0, header.Length);
-                                        myfile.Write(dati, list[i].dataoffset, list[i].datalenght);
+                                        filedata = new byte[list[i].datalenght];
+                                        Array.Copy(dati, list[i].dataoffset, filedata, 0, list[i].datalenght);
+                                        if (deswizzle)
+                                        {
+                                            List<byte> swizzled = new List<byte>();
+                                            int index = -1;
+                                            for (int t = 0; t < width; t++)
+                                            {
+                                                for (int y = 0; y < height; y++)
+                                                {
+                                                    index = calcZOrder(y, t);
+                                                    swizzled.Add(filedata[index * 4]);
+                                                    swizzled.Add(filedata[index * 4 + 1]);
+                                                    swizzled.Add(filedata[index * 4 + 2]);
+                                                    swizzled.Add(filedata[index * 4 + 3]);
+                                                }
+                                            }
+                                            filedata = swizzled.ToArray();
+                                        }
+                                        myfile.Write(filedata,0,filedata.Length);
                                         myfile.Close();                                      
                                     }
                                     else
@@ -660,11 +702,11 @@ namespace Decompressor
                                                 deffile.Position = list[modifyindex].propertyaddress + 1; //Number of mipmaps
                                                 if(imgdata[0x1C]!=0)
                                                 deffile.Write(imgdata, 0x1C, 1);
-                                                Array.Copy(imgdata, 16, punt, 0, 2); //Height
+                                                Array.Copy(imgdata, 16, punt, 0, 2); //Width
                                                 Array.Reverse(punt);
                                                 deffile.Position = list[modifyindex].propertyaddress + 8;
                                                 deffile.Write(punt, 0, punt.Length);
-                                                Array.Copy(imgdata, 12, punt, 0, 2); //Width
+                                                Array.Copy(imgdata, 12, punt, 0, 2); //Height
                                                 Array.Reverse(punt);
                                                 deffile.Position = list[modifyindex].propertyaddress + 10; 
                                                 deffile.Write(punt, 0, punt.Length);
@@ -819,6 +861,27 @@ namespace Decompressor
             {
                 MessageBox.Show(ex.Message);
             }
+        }
+        public Int32 calcZOrder(int xPos, int yPos)
+        {
+            Int32[] MASKS = { 0x55555555, 0x33333333, 0x0F0F0F0F, 0x00FF00FF, };
+            Int32[] SHIFTS = { 1, 2, 4, 8 };
+
+            Int32 x = xPos;
+            Int32 y = yPos;
+
+            x = (x | (x << SHIFTS[3])) & MASKS[3];
+            x = (x | (x << SHIFTS[2])) & MASKS[2];
+            x = (x | (x << SHIFTS[1])) & MASKS[1];
+            x = (x | (x << SHIFTS[0])) & MASKS[0];
+
+            y = (y | (y << SHIFTS[3])) & MASKS[3];
+            y = (y | (y << SHIFTS[2])) & MASKS[2];
+            y = (y | (y << SHIFTS[1])) & MASKS[1];
+            y = (y | (y << SHIFTS[0])) & MASKS[0];
+
+            int result = x | (y << 1);
+            return result;
         }
     }
 }
