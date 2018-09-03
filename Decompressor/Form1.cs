@@ -25,8 +25,8 @@ namespace Decompressor
          */
         private void btnUn_Click(object sender, EventArgs e)
         {
-           // try
-           // {
+            try
+            {
                 OpenFileDialog op = new OpenFileDialog();
                 op.Filter = "All Nier Volume Files (*.2DV;*.MDV;*.VIR;*.EFV)|*.2DV;*.MDV;*.VIR;*.EFV|Nier Font File|FONT_MAIN.PS3.BIN;FONT_MAIN_JP.PS3.BIN";
                 if (op.ShowDialog() == DialogResult.OK)
@@ -494,11 +494,11 @@ namespace Decompressor
                         throw new Exception("Unable to find the associated Package file");
                     }
                 }
-            /*}
+            }
             catch (Exception ex)
             {
                 MessageBox.Show(ex.Message);
-            }*/
+            }
 
         }
 
@@ -817,7 +817,7 @@ namespace Decompressor
                                                     stream.Position = list[modifyindex].dataoffset;
                                                     if (def[list[modifyindex].propertyaddress] == 0x85)
                                                     {
-                                                        int index = -1,arraypos;
+                                                        int index = -1, arraypos;
                                                         byte[] swizzled = new byte[noheader.Length];
                                                         int square = 0;
                                                         if (width > height)
@@ -834,21 +834,21 @@ namespace Decompressor
                                                             for (int x = 0; x < square; x++)
                                                             {
                                                                 index = calcZOrder(x, y);
-                                                                if (swizzled.Length > index)
+                                                                if (swizzled.Length > index * 4)
                                                                 {
-                                                                    swizzled[index] = noheader[arraypos];
+                                                                    swizzled[index * 4] = noheader[arraypos];
                                                                     arraypos++;
-                                                                    if (swizzled.Length > index+1)
+                                                                    if (swizzled.Length > index * 4 + 1)
                                                                     {
-                                                                        swizzled[index+1] = noheader[arraypos];
+                                                                        swizzled[index * 4 + 1] = noheader[arraypos];
                                                                         arraypos++;
-                                                                        if (swizzled.Length > index+2)
+                                                                        if (swizzled.Length > index * 4 + 2)
                                                                         {
-                                                                            swizzled[index+2] = noheader[arraypos];
+                                                                            swizzled[index * 4 + 2] = noheader[arraypos];
                                                                             arraypos++;
-                                                                            if (swizzled.Length > index+3)
+                                                                            if (swizzled.Length > index * 4 + 3)
                                                                             {
-                                                                                swizzled[index+3] = noheader[arraypos];
+                                                                                swizzled[index * 4 + 3] = noheader[arraypos];
                                                                                 arraypos++;
                                                                             }
                                                                         }
@@ -856,7 +856,7 @@ namespace Decompressor
                                                                 }
                                                             }
                                                         }
-                                                        noheader = swizzled;
+                                                        noheader = swizzled.ToArray();
                                                     }
                                                     stream.Write(noheader, 0, list[modifyindex].datalenght);
                                                     stream.Position = list[modifyindex].dataoffset + list[modifyindex].datalenght;
