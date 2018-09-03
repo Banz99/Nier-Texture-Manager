@@ -19,52 +19,57 @@ namespace Decompressor
         {
             InitializeComponent();
         }
-
+        /*
+         punt usage is strictly related to the fact that x86 machines are little endian (while the PS3 is big endian), so each time i get and set data on the file i need to rearrange bytes position accordingly.
+         The code is a bit messy, i should've created a separate class to handle the actual code and stay out of the UI things, will do it later          
+         */
         private void btnUn_Click(object sender, EventArgs e)
         {
-            try
-            {
+           // try
+           // {
                 OpenFileDialog op = new OpenFileDialog();
-                op.Filter = "All Nier Volume Files (*.2DV;*.MDV;*.VIR;*.EFV)|*.2DV;*.MDV;*.VIR;*.EFV|Nier Font File (FONT_MAIN.PS3.BIN;FONT_MAIN_JP.PS3.BIN)|FONT_MAIN.PS3.BIN;FONT_MAIN_JP.PS3.BIN";
+                op.Filter = "All Nier Volume Files (*.2DV;*.MDV;*.VIR;*.EFV)|*.2DV;*.MDV;*.VIR;*.EFV|Nier Font File|FONT_MAIN.PS3.BIN;FONT_MAIN_JP.PS3.BIN";
                 if (op.ShowDialog() == DialogResult.OK)
                 {
-                    string definizioni = op.FileName;
-                    string datiimmagini = op.FileName.Substring(0,definizioni.Length-4); //This will handle file with double extension
+                    bool isfont = false;
+                    string definitions = op.FileName;
+                    string imagedatacontainer = op.FileName.Substring(0,definitions.Length-4); //This will handle file with double extension
                     if (op.FileName.Split('.').Last() == "2DV") //This just assign the corresponding package to each one
                     {
-                        datiimmagini += ".2DP";
+                        imagedatacontainer += ".2DP";
                     }
                     else if (op.FileName.Split('.').Last() == "MDV")
                     {
-                        datiimmagini += ".MDP";
+                        imagedatacontainer += ".MDP";
                     }
                     else if (op.FileName.Split('.').Last() == "VIR")
                     {
-                        datiimmagini += ".PHY";
+                        imagedatacontainer += ".PHY";
                     }
                     else if (op.FileName.Split('.').Last() == "EFV")
                     {
-                        datiimmagini += ".EFP";
+                        imagedatacontainer += ".EFP";
                     }
                     else if (op.FileName.Split('.').Last() == "BIN")
                     {
-                        int index =definizioni.LastIndexOf("MAIN");
-                        datiimmagini = definizioni.Substring(0, index);
-                        datiimmagini += "VRAM";
-                        datiimmagini += definizioni.Substring(index+4,definizioni.Length-index-4);
+                        int index =definitions.LastIndexOf("MAIN"); //filename basically hardcoded, can't let pick random bin files
+                        imagedatacontainer = definitions.Substring(0, index);
+                        imagedatacontainer += "VRAM";
+                        imagedatacontainer += definitions.Substring(index+4,definitions.Length-index-4);
+                        isfont = true;
                     }
                     else
                     {
-                        throw new Exception("Invalid or unknown file selected");
+                        throw new Exception("Invalid or unknown file selected"); //No valid file selected (I have no idea of how you can arrive here)
                     }
-                    if (File.Exists(datiimmagini))
+                    if (File.Exists(imagedatacontainer))
                     {
-                        byte[] def = File.ReadAllBytes(definizioni);
+                        byte[] def = File.ReadAllBytes(definitions);
                         List<int> heappos = new List<int>(); //There are files with more than 1 heap header
                         int i = 0;
                         while (i < def.Length-4)
                         {
-                            if (System.Text.Encoding.UTF8.GetString(def, i, 4) == "HEAP") //Check for presence of one HEAP segment inside descriptor
+                            if (System.Text.Encoding.UTF8.GetString(def, i, 4) == "HEAP") //Check for presence of one or more HEAP segment inside descriptor
                             {
                                 heappos.Add(i);
                             }
@@ -72,7 +77,7 @@ namespace Decompressor
                         }
                         if (heappos.Count()==0)
                         {
-                            throw new Exception("Heap not found, invalid file");
+                            throw new Exception("Heap not found, invalid file"); //Can't work without an heap header, in the game there aren't any files without it
                         }
                         else
                         {
@@ -98,7 +103,7 @@ namespace Decompressor
                                     {
                                         found.istexture = false;
                                     }
-                                    found.pointer = i * 32 + heappos[k];
+                                    found.pointer = i * 32 + heappos[k]; //All of the following pointers are expressed as offsets. I prefer to work with real addresses
                                     Array.Copy(def, found.pointer + 4, punt, 0, 4);
                                     Array.Reverse(punt);
                                     found.nameaddress = BitConverter.ToInt32(punt, 0)+nametablepointer+heappos[k];
@@ -121,12 +126,12 @@ namespace Decompressor
                             }
                             MessageBox.Show("Found " + list.Count() + " texture files in "+heappos.Count()+" heap headers");
                             FolderBrowserDialog fold = new FolderBrowserDialog();
-                            byte[] dati = File.ReadAllBytes(datiimmagini);
+                            byte[] dati = File.ReadAllBytes(imagedatacontainer);
                             bool lzo = false;
-                            if (System.Text.Encoding.UTF8.GetString(dati, 0, 3) == "lzo")
+                            if (System.Text.Encoding.UTF8.GetString(dati, 0, 3) == "lzo") //Some files are lzo compressed, with a description of the size of the chunk compressed, uncompressed and how many there are, variables name should be explicative enough
                             {
                                 lzo = true;
-                                Stream temp = File.OpenWrite(datiimmagini+".tmp");
+                                Stream temp = File.OpenWrite(imagedatacontainer+".tmp");
                                 MemoryStream ms = new MemoryStream();                               
                                 Array.Copy(dati, 0x0c, punt, 0, 4);
                                 Array.Reverse(punt);
@@ -144,8 +149,7 @@ namespace Decompressor
                                 Array.Copy(dati, 0x2C, chunk, 0, compressedchuncklength);
                                 ms.Write(lzocomp.Decompress(chunk, uncompressedchuncklength),0,uncompressedchuncklength);
                                 int read = 0x2C + compressedchuncklength;
-                                read = read & 0xfff0000; //This will 99.99% of the time result in a simple 0x20000 increment from before, but we need to be sure
-                                read = read + 0x10000;
+                                read = 0x20000;
                                 for (i = 1; i < nchuncks; i++)
                                 {
 
@@ -158,9 +162,7 @@ namespace Decompressor
                                     chunk = new byte[compressedchuncklength];
                                     Array.Copy(dati, read+0xC, chunk, 0, compressedchuncklength);
                                     ms.Write(lzocomp.Decompress(chunk, uncompressedchuncklength), 0, uncompressedchuncklength);
-                                    read += 0xC + compressedchuncklength;
-                                    read = read & 0xfff0000;
-                                    read = read + 0x10000;
+                                    read += 0x20000;
                                    /* if (ms.Length >= size) //This seemed to be required at some point, now i may have fixed enough things that it isn't needed anymore
                                     {
                                         i = nchuncks;
@@ -169,7 +171,7 @@ namespace Decompressor
                                 }
                                 ms.WriteTo(temp);
                                 temp.Close();
-                                dati = File.ReadAllBytes(datiimmagini + ".tmp"); 
+                                dati = File.ReadAllBytes(imagedatacontainer + ".tmp"); 
                                 MessageBox.Show("LZO decompression done");
                             }
                             List<int> heapoffset = new List<int>();
@@ -178,9 +180,9 @@ namespace Decompressor
                             {
                                 Array.Copy(dati, next+0x4, punt, 0, 4);
                                 Array.Reverse(punt);
-                                int volte=BitConverter.ToInt32(punt, 0);
+                                int timestosearch=BitConverter.ToInt32(punt, 0);
                                 int k=0;
-                                for (i=0;i<volte;i++)
+                                for (i=0;i<timestosearch;i++)
                                 {
                                     Array.Copy(dati, next+0xC+(0x4*k), punt, 0, 4);
                                     Array.Reverse(punt);
@@ -192,7 +194,7 @@ namespace Decompressor
                                             next = temp;
                                             Array.Copy(dati, next + 0x4, punt, 0, 4);
                                             Array.Reverse(punt);
-                                            volte += BitConverter.ToInt32(punt, 0);
+                                            timestosearch += BitConverter.ToInt32(punt, 0);
                                             k = 0;
                                         }
                                         else
@@ -239,7 +241,7 @@ namespace Decompressor
                                 header[76] = 0x20;
                                 header[109] = 0x10;
                                 List<string> NierTextureDesc = new List<string>();
-                                NierTextureDesc.Add("Extracted from: "+datiimmagini);
+                                NierTextureDesc.Add("Extracted from: "+imagedatacontainer);
                                 if (lzo)
                                 {
                                     NierTextureDesc[0] += " Decompressed with LZO";
@@ -308,11 +310,7 @@ namespace Decompressor
                                             header[23] = punt[3];
                                             header[8] = 0x0F;
                                             header[80] = 0x41;
-                                            header[88] = 0x20;
-                                            header[94] = 0xFF;
-                                            header[97] = 0xFF;
-                                            header[100] = 0xFF;
-                                            header[107] = 0xFF;
+                                            header[88] = 0x20;          
                                             header[10] = 0x0;
                                             header[34] = 0x0;
                                             header[84] = 0x0;
@@ -321,6 +319,40 @@ namespace Decompressor
                                             header[87] = 0x0;
                                             header[108] = 0x0;
                                             header[110] = 0x0;
+                                            if (def[list[i].propertyaddress + 0x7] == 0xE4) //B8G8R8A8 (unsure about it, if anyone has got better ideas, feel free to change it)
+                                            {
+                                                 header[93] = 0xFF;
+                                                 header[98] = 0xFF;
+                                                 header[103] = 0xFF;
+                                                 header[104] = 0xFF;
+                                                 header[92] = 0x00;
+                                                 header[97] = 0x00;
+                                                 header[102] = 0x00;
+                                                 header[107] = 0x00;
+                                            }
+                                            else if (def[list[i].propertyaddress + 0x7] == 0x93) //A8B8G8R8
+                                            {
+                                                header[92] = 0xFF;
+                                                header[97] = 0xFF;
+                                                header[102] = 0xFF;
+                                                header[107] = 0xFF;
+                                                header[93] = 0x00;
+                                                header[98] = 0x00;
+                                                header[103] = 0x00;
+                                                header[104] = 0x00;
+                                            }
+                                            else //Never happened, need more tests
+                                            {
+                                                MessageBox.Show("Unknown RGBA mask for" + name+". BGRA will be applied");
+                                                header[93] = 0xFF;
+                                                header[98] = 0xFF;
+                                                header[103] = 0xFF;
+                                                header[104] = 0xFF;
+                                                header[92] = 0x00;
+                                                header[97] = 0x00;
+                                                header[102] = 0x00;
+                                                header[107] = 0x00;
+                                            }
                                             if (!deswizzle)
                                                 compression = "Uncompressed";
                                             else
@@ -354,10 +386,16 @@ namespace Decompressor
                                             }
                                             else
                                             {
-                                                if (compressiontype != 0x7)
-                                                    MessageBox.Show(name + " " + (list[i].propertyaddress + 8) + " uses an unknown compression format");
                                                 header[87] = 0x33; //DXT3, most common one
-                                                compression = "DXT3";
+                                                if (compressiontype != 0x7)
+                                                {
+                                                    MessageBox.Show(name + " " + (list[i].propertyaddress + 8) + " uses an unknown compression format");
+                                                    compression = "Unknown";
+                                                }
+                                                else
+                                                {
+                                                    compression = "DXT3";
+                                                }
                                             }
                                             header[108] = 0x07;
                                             header[110] = 0x40;
@@ -380,20 +418,42 @@ namespace Decompressor
                                         Array.Copy(dati, list[i].dataoffset, filedata, 0, list[i].datalenght);
                                         if (deswizzle)
                                         {
-                                            List<byte> swizzled = new List<byte>();
                                             int index = -1;
-                                            for (int t = 0; t < width; t++)
+                                            List<byte> swizzled = new List<byte>();
+                                            int square = 0;
+                                            if (width > height)
                                             {
-                                                for (int y = 0; y < height; y++)
+                                                square = width;
+                                            }
+                                            else //you always have to pick the biggest of the two to create the square, and then eventually discard some data
+                                            {
+                                                square = height;
+                                            }
+                                            for (int y = 0; y < square; y++)
+                                            {
+                                                for (int x = 0; x < square; x++)
                                                 {
-                                                    index = calcZOrder(y, t);
-                                                    swizzled.Add(filedata[index * 4]);
-                                                    swizzled.Add(filedata[index * 4 + 1]);
-                                                    swizzled.Add(filedata[index * 4 + 2]);
-                                                    swizzled.Add(filedata[index * 4 + 3]);
+                                                    index = calcZOrder(x, y); 
+                                                    if (filedata.Length > index * 4) //check that the index is available (might not be when we have a square bigger than the original width or height)
+                                                    { 
+                                                        swizzled.Add(filedata[index * 4]);
+                                                        if (filedata.Length > index * 4 + 1)
+                                                        {
+                                                            swizzled.Add(filedata[index * 4 + 1]);
+                                                            if (filedata.Length > index * 4 + 2)
+                                                            {
+                                                                swizzled.Add(filedata[index * 4 + 2]);
+                                                                if (filedata.Length > index * 4 + 3)
+                                                                {
+                                                                    swizzled.Add(filedata[index * 4 + 3]);
+                                                                }
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                             filedata = swizzled.ToArray();
+                                            
                                         }
                                         myfile.Write(filedata,0,filedata.Length);
                                         myfile.Close();                                      
@@ -418,9 +478,13 @@ namespace Decompressor
                                 {
                                     File.WriteAllLines(directory + "\\NierTextureDetails.txt", NierTextureDesc);
                                 }
-                                if (File.Exists(datiimmagini+".tmp"))
+                                if (File.Exists(imagedatacontainer+".tmp"))
                                 {
-                                    File.Delete(datiimmagini + ".tmp");
+                                    File.Delete(imagedatacontainer + ".tmp"); //Delete temporary lzo decompressed file
+                                }
+                                if (isfont)
+                                {
+                                    MessageBox.Show("To modify the font file, you need to split each color channel with either GIMP (with DDS plugin) or Photoshop and recombine them once done");
                                 }
                             }
                         }
@@ -430,11 +494,11 @@ namespace Decompressor
                         throw new Exception("Unable to find the associated Package file");
                     }
                 }
-            }
+            /*}
             catch (Exception ex)
             {
                 MessageBox.Show(ex.Message);
-            }
+            }*/
 
         }
 
@@ -456,34 +520,41 @@ namespace Decompressor
                     else
                     {
                         OpenFileDialog op = new OpenFileDialog();
-                        op.Filter = "All Nier Package Files (*.2DP;*.MDP;*.PHY;*.EFP)|*.2DP;*.MDP;*.PHY;*.EFP";
+                        op.Filter = "All Nier Volume Files (*.2DV;*.MDV;*.VIR;*.EFV)|*.2DV;*.MDV;*.VIR;*.EFV|Nier Font File|FONT_MAIN.PS3.BIN;FONT_MAIN_JP.PS3.BIN";
                         if (op.ShowDialog() == DialogResult.OK)
                         {
-                            string datiimmagini = op.FileName;                        
-                            string definizioni = op.FileName.Substring(0, datiimmagini.Length - 4); //This will handle file with double extension
-                            if (op.FileName.Split('.').Last() == "2DP") //This just assign the corresponding volume to each one
+                            string definitions = op.FileName;
+                            string imagedatacontainer = op.FileName.Substring(0, definitions.Length - 4); //This will handle file with double extension
+                            if (op.FileName.Split('.').Last() == "2DV") //This just assign the corresponding package to each one
                             {
-                                definizioni += ".2DV";
+                                imagedatacontainer += ".2DP";
                             }
-                            else if (op.FileName.Split('.').Last() == "MDP")
+                            else if (op.FileName.Split('.').Last() == "MDV")
                             {
-                                definizioni += ".MDV";
+                                imagedatacontainer += ".MDP";
                             }
-                            else if (op.FileName.Split('.').Last() == "PHY")
+                            else if (op.FileName.Split('.').Last() == "VIR")
                             {
-                                definizioni += ".VIR";
+                                imagedatacontainer += ".PHY";
                             }
-                            else if (op.FileName.Split('.').Last() == "EFP")
+                            else if (op.FileName.Split('.').Last() == "EFV")
                             {
-                                definizioni += ".EFV";
+                                imagedatacontainer += ".EFP";
+                            }
+                            else if (op.FileName.Split('.').Last() == "BIN")
+                            {
+                                int index = definitions.LastIndexOf("MAIN");
+                                imagedatacontainer = definitions.Substring(0, index);
+                                imagedatacontainer += "VRAM";
+                                imagedatacontainer += definitions.Substring(index + 4, definitions.Length - index - 4);
                             }
                             else
                             {
                                 throw new Exception("Invalid or unknown file selected");
                             }
-                            if (File.Exists(definizioni))
+                            if (File.Exists(imagedatacontainer))
                             {
-                                byte[] def = File.ReadAllBytes(definizioni);
+                                byte[] def = File.ReadAllBytes(definitions);
                                 List<int> heappos = new List<int>(); //There are files with more than 1 heap header
                                 int i = 0;
                                 while (i < def.Length - 4)
@@ -543,12 +614,12 @@ namespace Decompressor
                                             list.Add(found); //we need to add all files in any case
                                         }
                                     }
-                                    if (System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(datiimmagini), 0, 3) == "lzo")
+                                    if (System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(imagedatacontainer), 0, 3) == "lzo")
                                     {
                                         lzo = true;
                                         punt = new byte[4];
-                                        byte[] lzodata = File.ReadAllBytes(datiimmagini);
-                                        Stream temp = File.OpenWrite(datiimmagini + ".tmp");
+                                        byte[] lzodata = File.ReadAllBytes(imagedatacontainer);
+                                        Stream temp = File.OpenWrite(imagedatacontainer + ".tmp");
                                         MemoryStream ms = new MemoryStream();
                                         Array.Copy(lzodata, 0x0c, punt, 0, 4);
                                         Array.Reverse(punt);
@@ -586,9 +657,9 @@ namespace Decompressor
                                         }
                                         ms.WriteTo(temp);
                                         temp.Close();
-                                        datiimmagini = datiimmagini + ".tmp";
+                                        imagedatacontainer = imagedatacontainer + ".tmp";
                                     }
-                                    var dati = File.ReadAllBytes(datiimmagini);
+                                    var dati = File.ReadAllBytes(imagedatacontainer);
                                     List<int> heapoffset = new List<int>();
                                     int next = 0x0;
                                     if (System.Text.Encoding.UTF8.GetString(dati, 0, 4) == "KPKy") //Some files have this KPKy header with some unknown data, every dataoffset specified starts from the end of them
@@ -634,141 +705,236 @@ namespace Decompressor
                                             }
                                         }
                                     }
-                                    Stream stream = File.OpenWrite(datiimmagini);
-                                    List<string> nomi = new List<string>();
+                                    Stream stream = File.OpenWrite(imagedatacontainer);
+                                    List<string> namelist = new List<string>();
                                     for (int j = 0; j < list.Count(); j++)
                                     {
-                                        string nome = "";
+                                        string newname = "";
                                         int k = list[j].nameaddress;
                                         while (def[k] != 0) 
                                         {
-                                            nome += System.Text.Encoding.UTF8.GetString(def, k, 1);
+                                            newname += System.Text.Encoding.UTF8.GetString(def, k, 1);
                                             k++;
                                         }
                                         /*if(list[j].istexture) //Will fix when we can let everything to be reinjected back
-                                        nomi.Add(nome);
-                                        else nomi.Add(nome+"_"+System.Text.Encoding.UTF8.GetString(def, list[j].pointer, 4));*/
-                                        if (nomi.Contains(nome))
+                                        namelist.Add(newname);
+                                        else namelist.Add(nome+"_"+System.Text.Encoding.UTF8.GetString(def, list[j].pointer, 4));*/
+                                        if (namelist.Contains(newname))
                                         {
                                             k = 1;
-                                            while (nomi.Contains(nome+"_"+k))
+                                            while (namelist.Contains(newname+"_"+k))
                                             {
                                                 k++;
                                             }
-                                            nomi.Add(nome + "_" + k);
+                                            namelist.Add(newname + "_" + k);
                                         }
                                         else
-                                            nomi.Add(nome);
+                                            namelist.Add(newname);
                                     }
-                                    int fileoffset=0;
+                                    int fileoffset=0,width,height;
+                                    string notfound = "";
                                     for (i = 0; i < files.Length; i++)
                                     {
                                         try
                                         {
                                             int modifyindex;
-                                            if (nomi.IndexOf(files[i].Substring(0, files[i].Length - 4)) != -1) //Get index of the TX2D description by checking if filename corresponds to any of them
+                                            if (namelist.IndexOf(files[i].Substring(0, files[i].Length - 4)) != -1) //Get index of the TX2D description by checking if filename corresponds to any of them
                                             {
-                                                modifyindex = nomi.IndexOf(files[i].Substring(0, files[i].Length - 4));
-                                            }
-                                            else
-                                            {
-                                                throw new Exception("No matching file found for "+files[i]);
-                                            }
-                                            byte[] imgdata = File.ReadAllBytes(folder+"\\"+files[i]);
-                                            byte[] noheader = new byte[imgdata.Length - 128];
-                                            Array.Copy(imgdata,128, noheader,0,imgdata.Length-128);
-                                            if (noheader.Length % 0x80 != 0) //data must be 128-byte aligned, so it will probably need padding (expecially after being modified)
-                                            {
-                                                byte[] noheaderpad = new byte[noheader.Length];
-                                                Array.Copy(noheader,noheaderpad,noheader.Length);
-                                                noheader = new byte[noheaderpad.Length + (0x80 - noheader.Length % 0x80)];                                            
-                                                for (int j = 0; j < noheader.Length; j++) 
+                                                modifyindex = namelist.IndexOf(files[i].Substring(0, files[i].Length - 4));
+                                                byte[] imgdata = File.ReadAllBytes(folder + "\\" + files[i]);
+                                                byte[] noheader = new byte[imgdata.Length - 128];
+                                                Array.Copy(imgdata, 128, noheader, 0, imgdata.Length - 128);
+                                                if (noheader.Length % 0x80 != 0) //data must be 128-byte aligned, so it will probably need padding (expecially after being modified)
                                                 {
-                                                    if (j < noheaderpad.Length)
+                                                    byte[] noheaderpad = new byte[noheader.Length];
+                                                    Array.Copy(noheader, noheaderpad, noheader.Length);
+                                                    noheader = new byte[noheaderpad.Length + (0x80 - noheader.Length % 0x80)];
+                                                    for (int j = 0; j < noheader.Length; j++)
                                                     {
-                                                        noheader[j] = noheaderpad[j];
-                                                    }
-                                                    else
-                                                    {
-                                                        noheader[j] = 0xEE; //This seems to be the padding data that the game uses
-                                                    }
-                                                }
-                                            }
-                                            if (noheader.Length != list[modifyindex].datalenght) //if file to inject is bigger or smaller than the original
-                                            {
-                                                MessageBox.Show("File size of " + files[i] + " doesn't match the original. Attempting to reaarrange pointers");
-                                                Stream deffile = File.OpenWrite(definizioni);
-                                                punt = new byte[2];
-                                                deffile.Position = list[modifyindex].propertyaddress + 1; //Number of mipmaps
-                                                if(imgdata[0x1C]!=0)
-                                                deffile.Write(imgdata, 0x1C, 1);
-                                                Array.Copy(imgdata, 16, punt, 0, 2); //Width
-                                                Array.Reverse(punt);
-                                                deffile.Position = list[modifyindex].propertyaddress + 8;
-                                                deffile.Write(punt, 0, punt.Length);
-                                                Array.Copy(imgdata, 12, punt, 0, 2); //Height
-                                                Array.Reverse(punt);
-                                                deffile.Position = list[modifyindex].propertyaddress + 10; 
-                                                deffile.Write(punt, 0, punt.Length);
-                                                punt = BitConverter.GetBytes(noheader.Length);
-                                                Array.Reverse(punt);
-                                                deffile.Position = list[modifyindex].pointer + 24;//Data lenght
-                                                deffile.Write(punt, 0, punt.Length);
-                                                int offsetpos = noheader.Length -list[modifyindex].datalenght;
-                                                fileoffset+=offsetpos;
-                                                list[modifyindex].datalenght = noheader.Length;                                               
-                                                for (int j = 0; j < list.Count(); j++)
-                                                {
-                                                    if (list[j].pointer > list[modifyindex].pointer) //Adjust Data Offset for consequent pointers
-                                                    {
-                                                        if (list[j].onvolumefile==0x0) //files with no data on Package file will have 1 as value
+                                                        if (j < noheaderpad.Length)
                                                         {
-                                                            list[j].dataoffset += offsetpos;
-                                                            deffile.Position = list[j].pointer + 20;
-                                                            punt = BitConverter.GetBytes(list[j].dataoffset);
-                                                            Array.Reverse(punt);
-                                                            deffile.Write(punt, 0, punt.Length);
+                                                            noheader[j] = noheaderpad[j];
+                                                        }
+                                                        else
+                                                        {
+                                                            noheader[j] = 0xEE; //This seems to be the padding data that the game uses
                                                         }
                                                     }
                                                 }
-                                                deffile.Close();
-                                                stream.Close();
-                                                Stream str2 = File.OpenRead(datiimmagini);
-                                                str2.Position = (list[modifyindex].dataoffset+list[modifyindex].datalenght-offsetpos);
-                                                MemoryStream ms = new MemoryStream();
-                                                byte[] buffer = new Byte[2048];
-                                                int length;
-                                                while ((length = str2.Read(buffer, 0, buffer.Length)) > 0)
-                                                ms.Write(buffer, 0, length);
-                                                byte[] nextdata = ms.ToArray();
-                                                str2.Close();
-                                                stream = File.OpenWrite(datiimmagini);
-                                                stream.Position = list[modifyindex].dataoffset;
-                                                stream.Write(noheader, 0, list[modifyindex].datalenght);
-                                                stream.Position = list[modifyindex].dataoffset+list[modifyindex].datalenght;
-                                                stream.Write(nextdata, 0, nextdata.Length);
+                                                Array.Copy(imgdata, 16, punt, 0, 2); //Width
+                                                width = BitConverter.ToInt16(punt, 0);
+                                                Array.Copy(imgdata, 12, punt, 0, 2); //Height
+                                                height = BitConverter.ToInt16(punt, 0);                                                                                                      
+                                                if (noheader.Length != list[modifyindex].datalenght) //if file to inject is bigger or smaller than the original (not working properly on many files)
+                                                {
+                                                    MessageBox.Show("File size of " + files[i] + " doesn't match the original. Attempting to reaarrange pointers");
+                                                    Stream deffile = File.OpenWrite(definitions);
+                                                    punt = new byte[2];
+                                                    deffile.Position = list[modifyindex].propertyaddress + 1; //Number of mipmaps
+                                                    if (imgdata[0x1C] != 0)
+                                                        deffile.Write(imgdata, 0x1C, 1);
+                                                    punt = BitConverter.GetBytes((Int16)width);
+                                                    Array.Reverse(punt);                                                  
+                                                    deffile.Position = list[modifyindex].propertyaddress + 8;
+                                                    deffile.Write(punt, 0, punt.Length);
+                                                    punt = BitConverter.GetBytes((Int16)height);
+                                                    Array.Reverse(punt);
+                                                    deffile.Position = list[modifyindex].propertyaddress + 10;
+                                                    deffile.Write(punt, 0, punt.Length);
+                                                    punt = BitConverter.GetBytes(noheader.Length);
+                                                    Array.Reverse(punt);
+                                                    deffile.Position = list[modifyindex].pointer + 24;//Data lenght
+                                                    deffile.Write(punt, 0, punt.Length);
+                                                    int offsetpos = noheader.Length - list[modifyindex].datalenght;
+                                                    fileoffset += offsetpos;
+                                                    list[modifyindex].datalenght = noheader.Length;
+                                                    for (int j = 0; j < list.Count(); j++)
+                                                    {
+                                                        if (list[j].pointer > list[modifyindex].pointer) //Adjust Data Offset for consequent pointers
+                                                        {
+                                                            if (list[j].onvolumefile == 0x0) //files with no data on Package file will have 1 as value
+                                                            {
+                                                                list[j].dataoffset += offsetpos;
+                                                                deffile.Position = list[j].pointer + 20;
+                                                                punt = BitConverter.GetBytes(list[j].dataoffset);
+                                                                Array.Reverse(punt);
+                                                                deffile.Write(punt, 0, punt.Length);
+                                                            }
+                                                        }
+                                                    }
+                                                    deffile.Close();
+                                                    stream.Close();
+                                                    Stream str2 = File.OpenRead(imagedatacontainer);
+                                                    str2.Position = (list[modifyindex].dataoffset + list[modifyindex].datalenght - offsetpos);
+                                                    MemoryStream ms = new MemoryStream();
+                                                    byte[] buffer = new Byte[2048];
+                                                    int length;
+                                                    while ((length = str2.Read(buffer, 0, buffer.Length)) > 0)
+                                                        ms.Write(buffer, 0, length);
+                                                    byte[] nextdata = ms.ToArray();
+                                                    str2.Close();
+                                                    stream = File.OpenWrite(imagedatacontainer);
+                                                    stream.Position = list[modifyindex].dataoffset;
+                                                    if (def[list[modifyindex].propertyaddress] == 0x85)
+                                                    {
+                                                        int index = -1,arraypos;
+                                                        byte[] swizzled = new byte[noheader.Length];
+                                                        int square = 0;
+                                                        if (width > height)
+                                                        {
+                                                            square = width;
+                                                        }
+                                                        else //you always have to pick the biggest of the two to create the square, and then eventually discard some data
+                                                        {
+                                                            square = height;
+                                                        }
+                                                        arraypos = 0;
+                                                        for (int y = 0; y < square; y++)
+                                                        {
+                                                            for (int x = 0; x < square; x++)
+                                                            {
+                                                                index = calcZOrder(x, y);
+                                                                if (swizzled.Length > index)
+                                                                {
+                                                                    swizzled[index] = noheader[arraypos];
+                                                                    arraypos++;
+                                                                    if (swizzled.Length > index+1)
+                                                                    {
+                                                                        swizzled[index+1] = noheader[arraypos];
+                                                                        arraypos++;
+                                                                        if (swizzled.Length > index+2)
+                                                                        {
+                                                                            swizzled[index+2] = noheader[arraypos];
+                                                                            arraypos++;
+                                                                            if (swizzled.Length > index+3)
+                                                                            {
+                                                                                swizzled[index+3] = noheader[arraypos];
+                                                                                arraypos++;
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                        noheader = swizzled;
+                                                    }
+                                                    stream.Write(noheader, 0, list[modifyindex].datalenght);
+                                                    stream.Position = list[modifyindex].dataoffset + list[modifyindex].datalenght;
+                                                    stream.Write(nextdata, 0, nextdata.Length);
+                                                }
+                                                else
+                                                {
+                                                    stream.Position = list[modifyindex].dataoffset;
+                                                    if (def[list[modifyindex].propertyaddress] == 0x85)
+                                                    {
+                                                        int index = -1,arraypos;
+                                                        byte[] swizzled = new byte[noheader.Length];
+                                                        int square = 0;
+                                                        if (width > height)
+                                                        {
+                                                            square = width;
+                                                        }
+                                                        else //you always have to pick the biggest of the two to create the square, and then eventually discard some data
+                                                        {
+                                                            square = height;
+                                                        }
+                                                        arraypos = 0;
+                                                        for (int y = 0; y < square; y++)
+                                                        {
+                                                            for (int x = 0; x < square; x++)
+                                                            {
+                                                                index = calcZOrder(x, y);
+                                                                if (swizzled.Length > index*4)
+                                                                {
+                                                                    swizzled[index * 4] = noheader[arraypos];
+                                                                    arraypos++;
+                                                                    if (swizzled.Length > index * 4 + 1)
+                                                                    {
+                                                                        swizzled[index * 4 + 1] = noheader[arraypos];
+                                                                        arraypos++;
+                                                                        if (swizzled.Length > index * 4 + 2)
+                                                                        {
+                                                                            swizzled[index * 4 + 2] = noheader[arraypos];
+                                                                            arraypos++;
+                                                                            if (swizzled.Length > index * 4 + 3)
+                                                                            {
+                                                                                swizzled[index * 4 + 3] = noheader[arraypos];
+                                                                                arraypos++;
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                        noheader = swizzled.ToArray();
+                                                    }
+                                                    stream.Write(noheader, 0, noheader.Length);
+                                                }
                                             }
                                             else
                                             {
-                                                stream.Position = list[modifyindex].dataoffset;
-                                                stream.Write(noheader, 0, noheader.Length);
+                                                notfound+=",\n"+files[i];
                                             }
-                                        }
-                                        catch (Exception ex)
-                                        {
-                                            stream.Close();
-                                            throw new Exception(ex.Message);
-                                        }
+                                         }
+                                         catch (Exception ex)
+                                         {
+                                             stream.Close();
+                                             throw new Exception(ex.Message);
+                                         }
+                                    }
+                                    if (notfound != "")
+                                    {
+                                        MessageBox.Show("No matching data found for: "+notfound.Substring(1)+".");
                                     }
                                     if (fileoffset<0) //Should happen only when you inject texture smaller than the original, helps removing garbage data
                                     {
                                         stream.SetLength(stream.Length+fileoffset);
                                     }
                                     stream.Close();
-                                    if (lzo)
+                                    if (lzo) //rebuild lzo file (not strictly necessary, but it's better to remain as close as possible to the game structure)
                                     {
-                                        dati = File.ReadAllBytes(datiimmagini.Substring(0, datiimmagini.Length - 4));
-                                        byte[] datinoncomp = File.ReadAllBytes(datiimmagini);
+                                        dati = File.ReadAllBytes(imagedatacontainer.Substring(0, imagedatacontainer.Length - 4));
+                                        byte[] datinoncomp = File.ReadAllBytes(imagedatacontainer);
                                         byte[] padding = new byte[1];
                                         padding[0] = 0x0;
 
@@ -785,7 +951,7 @@ namespace Decompressor
                                             Array.Copy(datinoncomp, uncompressedchunckpointer, chunk, 0, expectedchunksize);
                                             result = lzocomp.Compress(chunk);
                                             expectedchunksize -= 0x1000;
-                                        } while (result.Length >= 0x20000);
+                                        } while (result.Length >= 0x20000); //Attempt to compress the first block of 0x32000 in size to less than 0x20000. If not possible reduce data lenght by 0x1000 each time
                                         uncompressedchunckpointer += chunk.Length;
                                         punt = BitConverter.GetBytes(chunk.Length);
                                         Array.Reverse(punt);
@@ -799,7 +965,7 @@ namespace Decompressor
                                         {
                                             ms.Write(padding, 0, 1);
                                         } 
-                                        while (uncompressedchunckpointer < datinoncomp.Length)
+                                        while (uncompressedchunckpointer < datinoncomp.Length) //same procedure as before, but with pointers to keep track of where we are
                                         {
                                             nchuncks++;
                                             punt = BitConverter.GetBytes(uncompressedchunckpointer);
@@ -838,11 +1004,11 @@ namespace Decompressor
                                         punt = BitConverter.GetBytes(datinoncomp.Length);
                                         Array.Reverse(punt);
                                         ms.Write(punt, 0, 4);
-                                        File.Delete(datiimmagini.Substring(0, datiimmagini.Length - 4));
-                                        Stream lzofile = File.Create(datiimmagini.Substring(0, datiimmagini.Length - 4));
+                                        File.Delete(imagedatacontainer.Substring(0, imagedatacontainer.Length - 4));
+                                        Stream lzofile = File.Create(imagedatacontainer.Substring(0, imagedatacontainer.Length - 4));
                                         ms.WriteTo(lzofile);
                                         lzofile.Close();
-                                        File.Delete(datiimmagini);
+                                        File.Delete(imagedatacontainer);
                                         MessageBox.Show("LZO recompression done");
                                     }
                                     MessageBox.Show("File repacked succesfully");
@@ -862,9 +1028,9 @@ namespace Decompressor
                 MessageBox.Show(ex.Message);
             }
         }
-        public Int32 calcZOrder(int xPos, int yPos)
+        public Int32 calcZOrder(int xPos, int yPos) //Credit to user aggsol from https://stackoverflow.com/questions/12157685/z-order-curve-coordinates, whose solution is based on http://graphics.stanford.edu/~seander/bithacks.html
         {
-            Int32[] MASKS = { 0x55555555, 0x33333333, 0x0F0F0F0F, 0x00FF00FF, };
+            Int32[] MASKS = { 0x55555555, 0x33333333, 0x0F0F0F0F, 0x00FF00FF};
             Int32[] SHIFTS = { 1, 2, 4, 8 };
 
             Int32 x = xPos;
