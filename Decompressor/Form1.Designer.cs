@@ -33,7 +33,7 @@
             this.groupBox1 = new System.Windows.Forms.GroupBox();
             this.groupBox2 = new System.Windows.Forms.GroupBox();
             this.btnRep = new System.Windows.Forms.Button();
-            this.checkBox1 = new System.Windows.Forms.CheckBox();
+            this.chkXbox = new System.Windows.Forms.CheckBox();
             this.chkonlytext = new System.Windows.Forms.CheckBox();
             this.chkDetails = new System.Windows.Forms.CheckBox();
             this.groupBox1.SuspendLayout();
@@ -80,16 +80,17 @@
             this.btnRep.UseVisualStyleBackColor = true;
             this.btnRep.Click += new System.EventHandler(this.btnRep_Click);
             // 
-            // checkBox1
+            // chkXbox
             // 
-            this.checkBox1.AutoSize = true;
-            this.checkBox1.Enabled = false;
-            this.checkBox1.Location = new System.Drawing.Point(13, 91);
-            this.checkBox1.Name = "checkBox1";
-            this.checkBox1.Size = new System.Drawing.Size(81, 17);
-            this.checkBox1.TabIndex = 3;
-            this.checkBox1.Text = "is Xbox 360";
-            this.checkBox1.UseVisualStyleBackColor = true;
+            this.chkXbox.AutoSize = true;
+            this.chkXbox.Checked = true;
+            this.chkXbox.CheckState = System.Windows.Forms.CheckState.Checked;
+            this.chkXbox.Location = new System.Drawing.Point(13, 91);
+            this.chkXbox.Name = "chkXbox";
+            this.chkXbox.Size = new System.Drawing.Size(81, 17);
+            this.chkXbox.TabIndex = 3;
+            this.chkXbox.Text = "is Xbox 360";
+            this.chkXbox.UseVisualStyleBackColor = true;
             // 
             // chkonlytext
             // 
@@ -122,12 +123,12 @@
             this.ClientSize = new System.Drawing.Size(402, 115);
             this.Controls.Add(this.chkDetails);
             this.Controls.Add(this.chkonlytext);
-            this.Controls.Add(this.checkBox1);
+            this.Controls.Add(this.chkXbox);
             this.Controls.Add(this.groupBox2);
             this.Controls.Add(this.groupBox1);
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.Name = "Form1";
-            this.Text = "Nier Texture Manager 0.2a by Banz99";
+            this.Text = "Nier Texture Manager 0.3a by Banz99";
             this.groupBox1.ResumeLayout(false);
             this.groupBox2.ResumeLayout(false);
             this.ResumeLayout(false);
@@ -141,7 +142,7 @@
         private System.Windows.Forms.GroupBox groupBox1;
         private System.Windows.Forms.GroupBox groupBox2;
         private System.Windows.Forms.Button btnRep;
-        private System.Windows.Forms.CheckBox checkBox1;
+        private System.Windows.Forms.CheckBox chkXbox;
         private System.Windows.Forms.CheckBox chkonlytext;
         private System.Windows.Forms.CheckBox chkDetails;
     }
