@@ -83,8 +83,6 @@
             // chkXbox
             // 
             this.chkXbox.AutoSize = true;
-            this.chkXbox.Checked = true;
-            this.chkXbox.CheckState = System.Windows.Forms.CheckState.Checked;
             this.chkXbox.Location = new System.Drawing.Point(13, 91);
             this.chkXbox.Name = "chkXbox";
             this.chkXbox.Size = new System.Drawing.Size(81, 17);

@@ -25,10 +25,10 @@ namespace Decompressor
          */
         private void btnUn_Click(object sender, EventArgs e)
         {
-            try
-            {
+           try
+           {
                 OpenFileDialog op = new OpenFileDialog();
-                op.Filter = "All Nier Volume Files (*.2DV;*.MDV;*.VIR;*.EFV)|*.2DV;*.MDV;*.VIR;*.EFV|Nier Font File|FONT_MAIN.PS3.BIN;FONT_MAIN_JP.PS3.BIN";
+                op.Filter = "All Nier Volume Files (*.2DV;*.MDV;*.VIR;*.EFV)|*.2DV;*.MDV;*.VIR;*.EFV|Nier Font File|FONT_MAIN.*.BIN;FONT_MAIN_JP.*.BIN";
                 if (op.ShowDialog() == DialogResult.OK)
                 {
                     bool isfont = false;
@@ -402,7 +402,7 @@ namespace Decompressor
                                             else
                                             {
                                                 header[87] = 0x33; //DXT3, most common one
-                                                if ((compressiontype != 0x7) && (!chkXbox.Checked))
+                                                if ((compressiontype != 0x7)&&(compressiontype != 0x53))
                                                 {
                                                     MessageBox.Show(name + " " + (list[i].propertyaddress + 8) + " uses an unknown compression format");
                                                     compression = "Unknown";
@@ -477,12 +477,16 @@ namespace Decompressor
                                                 byte tr;
                                                 for (int k = 0; k < filedata.Length / 2; k++)
                                                 {
-                                                    tr = filedata[k*2];
+                                                    tr = filedata[k * 2];
                                                     filedata[k * 2] = filedata[k * 2 + 1];
                                                     filedata[k * 2 + 1] = tr;
-                                                }    
+                                                }
                                             }
                                             int tilingwidth = (def[list[i].propertyaddress + 0x1C] - 0x80)*128;
+                                            if (def[list[i].propertyaddress + 0x1D] != 0X0)
+                                            {
+                                                tilingwidth += 32 * def[list[i].propertyaddress + 0x1D] / 0X40;
+                                            }
                                             if (tilingwidth > 0)
                                             {
                                                 int tilingheight = filedata.Length / tilingwidth;
@@ -509,11 +513,11 @@ namespace Decompressor
                                                 }
                                                 else if (compressiontype == 0x7C)                                               
                                                 {
+                                                    
                                                     tilingheight = filedata.Length * 2 / tilingwidth;
                                                     filedata = ConvertToLinearTexture(filedata, tilingwidth, tilingheight, "CTX1");
                                                     List<byte> rgbdata = new List<byte>();
-                                                    List<byte> reordereddata = new List<byte>();
-                                                    byte[] cr= new byte[4];
+                                                    byte[] cr = new byte[4];
                                                     byte[] cg = new byte[4];
                                                     List<byte> chred = new List<byte>();
                                                     List<byte> chgre = new List<byte>();
@@ -541,8 +545,8 @@ namespace Decompressor
                                                     }
                                                     int koffset = 0;
                                                     int offset = 0;
-                                                    int k=0;
-                                                    while(koffset < chred.Count()/16-1)
+                                                    int k = 0;
+                                                    while (koffset < chred.Count() / 16 - 1)
                                                     {
                                                         rgbdata.AddRange(chred.GetRange(k * 16 + offset, 1));
                                                         rgbdata.AddRange(chgre.GetRange(k * 16 + offset, 1));
@@ -560,7 +564,7 @@ namespace Decompressor
                                                         rgbdata.AddRange(chgre.GetRange(k * 16 + 3 + offset, 1));
                                                         rgbdata.Add(0XFF);
                                                         rgbdata.Add(0XFF);
-                                                        if (((k % (tilingwidth / 4)==0)||((k+1)*16==chred.Count()))&&(k!=koffset)) //Might truncate a little bit of data, but it would be padding anyway
+                                                        if (((k % (tilingwidth / 4) == 0) || ((k + 1) * 16 == chred.Count())) && (k != koffset)) //Might truncate a little bit of data, but it would be padding anyway
                                                         {
                                                             if (offset != 12)
                                                             {
@@ -574,7 +578,7 @@ namespace Decompressor
                                                             }
                                                         }
                                                         k++;
-                                                    }                                                  
+                                                    }
                                                     filedata = rgbdata.ToArray();
                                                 }
                                                 List<byte> arrayed = new List<byte>(filedata);
@@ -582,15 +586,25 @@ namespace Decompressor
                                                 int byt = (int)Math.Floor((double)((def[list[i].propertyaddress + 0x1C] - 0x80) - 1) / 2);
                                                 if (byt < 0) byt = 0;
                                                 width = byt * 256 + def[list[i].propertyaddress + 0x27]+1;
+                                                if (def[list[i].propertyaddress + 0x1D] != 0X0) //Workaround until I find a better method
+                                                {
+                                                    if((def[list[i].propertyaddress + 0x1C] - 0x80)>0)
+                                                    width += 256;
+                                                }
                                                 if (width != tilingwidth)
                                                 {
-                                                    int paddedwidth = width;
-                                                    if (width % 4 != 0)
+                                                    int blockoffsetstart=0;
+                                                    if (def[list[i].propertyaddress + 0x1C] - 0x80 > def[list[i].propertyaddress + 0x25]) //Not sure about this, only a few files fall in this category, but it seems to work so...
                                                     {
-                                                        paddedwidth += 4 - width % 4;
+                                                        blockoffsetstart=4;
+                                                    }
+                                                    int paddedwidth = width;
+                                                    if ((width % 4 != 0) && (compressiontype != 0x86))
+                                                    {
+                                                        paddedwidth += 4 - width % 4; //DXTn and CTX1 work with a 4x4 pixel grid, so this is needed
                                                     }
                                                     int blocksize = tilingwidth * 4;
-                                                    int blocks = filedata.Length/blocksize; //Not entirely sure, but seems to be working
+                                                    int blocks = filedata.Length/blocksize; 
                                                     int divider = 4;
                                                     if ((compressiontype == 0x52)||(compressiontype == 0x7C))
                                                     {
@@ -598,20 +612,32 @@ namespace Decompressor
                                                         blocks = filedata.Length / blocksize;
                                                         divider = 8;
                                                     }
-                                                    for (int k = 0; k < blocks; k++)
+                                                    if (compressiontype != 0x86)
                                                     {
-                                                        for (int s = 0; s < paddedwidth / divider; s++)
+                                                        for (int k = 0; k < blocks; k++)
                                                         {
-                                                            trimmed.AddRange(arrayed.GetRange(k * blocksize + s * 16, 16));
+                                                            if (k >= blockoffsetstart)
+                                                            {
+                                                                for (int s = 0; s < paddedwidth / divider; s++)
+                                                                {
+                                                                    trimmed.AddRange(arrayed.GetRange(k * blocksize + s * 16, 16));
+                                                                }
+                                                            }
                                                         }
                                                     }
-                                                     /*for (int k = 0; k < arrayed.Count() / 16; k++)
+                                                    else
                                                     {
-                                                        if (!arrayed.GetRange(k * 16, 16).All(x => x == 0x0))
+                                                        for (int k = 0; k < blocks; k++)
                                                         {
-                                                            trimmed.AddRange(arrayed.GetRange(k * 16, 16));
+                                                            if (k >= blockoffsetstart)
+                                                            {
+                                                                for (int s = 0; s < paddedwidth; s++)
+                                                                {
+                                                                    trimmed.AddRange(arrayed.GetRange(k * blocksize + s * 4, 4));
+                                                                }
+                                                            }
                                                         }
-                                                    }  */                                             
+                                                    }                                           
                                                 }
                                                 else{
                                                     trimmed = arrayed;
