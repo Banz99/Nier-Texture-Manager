@@ -85,9 +85,9 @@
             this.chkXbox.AutoSize = true;
             this.chkXbox.Location = new System.Drawing.Point(13, 91);
             this.chkXbox.Name = "chkXbox";
-            this.chkXbox.Size = new System.Drawing.Size(81, 17);
+            this.chkXbox.Size = new System.Drawing.Size(71, 17);
             this.chkXbox.TabIndex = 3;
-            this.chkXbox.Text = "is Xbox 360";
+            this.chkXbox.Text = "Xbox 360";
             this.chkXbox.UseVisualStyleBackColor = true;
             // 
             // chkonlytext
