@@ -1114,14 +1114,14 @@ namespace Decompressor
                                                     }
                                                     if(chkXbox.Checked)
                                                     {
-                                                        compressiontype = compressiontype = def[list[i].propertyaddress + 0x23];
+                                                        compressiontype = compressiontype = def[list[modifyindex].propertyaddress + 0x23];
                                                         if(compressiontype == 0x7C){
                                                             throw new Exception("CTX1 not currently supported for reinjection");
                                                         }
-                                                        int tilingwidth = (def[list[i].propertyaddress + 0x1C] - 0x80) * 128;
-                                                        if (def[list[i].propertyaddress + 0x1D] != 0X0)
+                                                        int tilingwidth = (def[list[modifyindex].propertyaddress + 0x1C] - 0x80) * 128;
+                                                        if (def[list[modifyindex].propertyaddress + 0x1D] != 0X0)
                                                         {
-                                                            tilingwidth += 32 * def[list[i].propertyaddress + 0x1D] / 0X40;
+                                                            tilingwidth += 32 * def[list[modifyindex].propertyaddress + 0x1D] / 0X40;
                                                         }
                                                         List<byte> trimmed = new List<byte>(noheader);
                                                         List<byte> arrayed = new List<byte>();
